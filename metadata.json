@@ -1,0 +1,6 @@
+{
+  "name": "挑战老黄: 3D真实篮球对抗赛",
+  "description": "挑战老黄: 3D单人篮球1v1对抗赛，真实物理引擎与手感、多级智能AI防守、在线排行榜与精彩进球录像分享",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
