@@ -213,7 +213,7 @@ export default function App() {
           onOpenLeaderboard={() => setShowLeaderboardModal(true)}
           onOpenReplays={() => setShowReplayModal(true)}
           onPauseToggle={handlePauseToggle}
-          onTouchDirection={(dir) => engineRef.current?.onTouchDirection(dir)}
+          onTouchDirection={(dir, sprint) => engineRef.current?.onTouchDirection(dir, sprint)}
           onTouchShootPress={() => engineRef.current?.onTouchShootPress()}
           onTouchShootRelease={() => engineRef.current?.onTouchShootRelease()}
           onTriggerStepback={() => {

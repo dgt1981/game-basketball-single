@@ -96,6 +96,8 @@ export class GameEngine {
 
   // Input states
   private keys: Record<string, boolean> = {};
+  private touchDirection: THREE.Vector2 = new THREE.Vector2();
+  private touchIsSprinting: boolean = false;
   private playerPos: THREE.Vector3 = new THREE.Vector3(0, 0, 7.2);
   private playerVelocity: THREE.Vector3 = new THREE.Vector3();
   private playerRot: number = 0;
@@ -289,12 +291,10 @@ export class GameEngine {
   }
 
   // --- External Control APIs for Touch HUD ---
-  public onTouchDirection(dir: { x: number; z: number }) {
+  public onTouchDirection(dir: { x: number; z: number }, sprint: boolean = false) {
     if (this.phase !== 'PLAYING') return;
-    this.keys['KeyW'] = dir.z < -0.3;
-    this.keys['KeyS'] = dir.z > 0.3;
-    this.keys['KeyA'] = dir.x < -0.3;
-    this.keys['KeyD'] = dir.x > 0.3;
+    this.touchDirection.set(dir.x, dir.z);
+    this.touchIsSprinting = sprint;
   }
 
   public onTouchShootPress() {
@@ -694,11 +694,22 @@ export class GameEngine {
       if (this.keys['KeyA'] || this.keys['ArrowLeft']) moveInput.x -= 1;
       if (this.keys['KeyD'] || this.keys['ArrowRight']) moveInput.x += 1;
 
-      this.isSprinting = !!(this.keys['ShiftLeft'] || this.keys['ShiftRight']);
+      // Integrate mobile analog virtual joystick
+      if (this.touchDirection.length() > 0.05) {
+        moveInput.x = this.touchDirection.x;
+        moveInput.y = this.touchDirection.y;
+      }
+
+      this.isSprinting = !!(
+        this.keys['ShiftLeft'] ||
+        this.keys['ShiftRight'] ||
+        this.touchIsSprinting
+      );
       const moveSpeed = this.isSprinting ? 5.2 : 3.6;
 
-      if (moveInput.length() > 0) {
-        moveInput.normalize();
+      const inputLen = moveInput.length();
+      if (inputLen > 0.05) {
+        if (inputLen > 1) moveInput.normalize();
         this.playerVelocity.x = moveInput.x * moveSpeed;
         this.playerVelocity.z = moveInput.y * moveSpeed;
 
