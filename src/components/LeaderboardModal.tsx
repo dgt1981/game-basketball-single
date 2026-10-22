@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Trophy, Medal, Flame, Target, Award, Filter } from 'lucide-react';
 import { LeaderboardEntry, DifficultyLevel } from '../types/game';
-import { getLeaderboard } from '../game/leaderboard';
+import { getLeaderboard, fetchRemoteLeaderboard } from '../game/leaderboard';
 
 interface LeaderboardModalProps {
   onClose: () => void;
@@ -11,6 +11,18 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
   const [entries, setEntries] = useState<LeaderboardEntry[]>(getLeaderboard());
   const [filterDifficulty, setFilterDifficulty] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'mvp' | 'streak' | 'fg'>('mvp');
+
+  useEffect(() => {
+    let active = true;
+    fetchRemoteLeaderboard(filterDifficulty, sortBy).then((remote) => {
+      if (active && remote && remote.length > 0) {
+        setEntries(remote);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [filterDifficulty, sortBy]);
 
   // Filter & Sort
   const filtered = entries

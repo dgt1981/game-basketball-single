@@ -215,5 +215,80 @@ export function submitPlayerScore(
     console.warn('Failed to save updated leaderboard:', err);
   }
 
+  // Attempt to sync to remote PHP backend if available
+  submitRemoteScore({
+    playerName: newEntry.playerName,
+    avatar: newEntry.avatar,
+    country: newEntry.country,
+    countryCode: newEntry.countryCode,
+    difficulty: newEntry.difficulty,
+    score: newEntry.score,
+    fgPercentage: newEntry.fgPercentage,
+    threePointPercentage: newEntry.threePointPercentage,
+    winStreak: newEntry.winStreak,
+    mvpRating: newEntry.mvpRating,
+  }).catch(() => {});
+
   return { entry: newEntry, rank: userRank };
+}
+
+/**
+ * Backend API URL for PHP server integration
+ */
+export const BACKEND_API_URL =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_LEADERBOARD_API) ||
+  '/backend/leaderboard.php';
+
+/**
+ * Fetch leaderboard from PHP backend with fallback to localStorage
+ */
+export async function fetchRemoteLeaderboard(
+  difficulty: string = 'all',
+  sort: string = 'mvp'
+): Promise<LeaderboardEntry[] | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s quick timeout
+    const res = await fetch(`${BACKEND_API_URL}?difficulty=${difficulty}&sort=${sort}&limit=50`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+      return json.data;
+    }
+  } catch {
+    // Backend not deployed or unreachable, silently fall back
+  }
+  return null;
+}
+
+/**
+ * Submit score to remote PHP backend
+ */
+export async function submitRemoteScore(
+  payload: Record<string, unknown>
+): Promise<{ entry: LeaderboardEntry; rank: number } | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(BACKEND_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json.success && json.data) {
+      return { entry: json.data, rank: json.data.rank };
+    }
+  } catch {
+    // Fall back to local
+  }
+  return null;
 }

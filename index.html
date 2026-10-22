@@ -9,6 +9,47 @@
     <meta property="og:description" content="挑战老黄: 3D单人篮球1v1对抗赛，真实物理引擎与手感、多级智能AI防守、在线排行榜与精彩进球录像分享。" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      // Guard against third-party browser extension conflicts (e.g. EVM wallet extensions redefining window.ethereum)
+      try {
+        if (!('ethereum' in window)) {
+          let _ethereum;
+          Object.defineProperty(window, 'ethereum', {
+            get() { return _ethereum; },
+            set(val) { _ethereum = val; },
+            configurable: true,
+            enumerable: true,
+          });
+        }
+      } catch (e) {}
+
+      window.addEventListener(
+        'error',
+        function (event) {
+          const isExtension =
+            (event.filename && (event.filename.includes('chrome-extension://') || event.filename.includes('moz-extension://'))) ||
+            (event.message && (event.message.includes('Cannot redefine property') || event.message.includes('ethereum')));
+          if (isExtension) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+          }
+        },
+        true
+      );
+
+      window.addEventListener(
+        'unhandledrejection',
+        function (event) {
+          const reasonStr = String(event.reason || '');
+          if (reasonStr.includes('ethereum') || reasonStr.includes('chrome-extension://') || reasonStr.includes('Cannot redefine property')) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }
+        },
+        true
+      );
+    </script>
   </head>
   <body>
     <div id="root"></div>
