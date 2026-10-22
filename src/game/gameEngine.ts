@@ -40,7 +40,8 @@ export interface GameEngineCallbacks {
     meterValue: number,
     isGreen: boolean,
     rating: ShotRating | null,
-    contest: number
+    contest: number,
+    playerScreenPos?: { x: number; y: number }
   ) => void;
   onShotResult: (result: ShotResult) => void;
   onMatchFinished: (playerWon: boolean, stats: PlayerStats) => void;
@@ -107,6 +108,7 @@ export class GameEngine {
   private isChargingShot: boolean = false;
   private shotChargeStartTime: number = 0;
   private sweetSpotDuration: number = 0.65; // Sweet spot at 650ms
+  private wasGreenLastFrame: boolean = false;
   private pendingShotResult: ShotResult | null = null;
   private shotFlightTimer: number = 0;
   private netAnimTimer: number = -1;
@@ -404,17 +406,34 @@ export class GameEngine {
     this.shotFlightTimer = 0;
   }
 
+  private getPlayerScreenPos(): { x: number; y: number } {
+    if (!this.camera || !this.container) return { x: 50, y: 65 };
+    _vec3.copy(this.playerPos);
+    _vec3.y += 2.4; // Directly above shooter's head/hands
+    _vec3.project(this.camera);
+
+    const x = ((_vec3.x + 1) / 2) * 100;
+    const y = ((-_vec3.y + 1) / 2) * 100;
+    return {
+      x: Math.max(8, Math.min(92, x)),
+      y: Math.max(12, Math.min(88, y)),
+    };
+  }
+
   // --- Offensive Action Mechanics ---
   private startShotGather() {
     if (!this.ballPhysics.isHeld) return;
     this.isChargingShot = true;
     this.shotChargeStartTime = performance.now();
+    this.wasGreenLastFrame = false;
     this.playerRig.setPose('gather');
+    sounds.playWhoosh();
   }
 
   private releaseShot() {
     if (!this.isChargingShot) return;
     this.isChargingShot = false;
+    this.wasGreenLastFrame = false;
 
     const chargeDuration = (performance.now() - this.shotChargeStartTime) / 1000;
 
@@ -429,7 +448,7 @@ export class GameEngine {
         this.aiDefender.pose = 'block_jump';
         this.callbacks.onFeedbackToast('🎯 假动作晃飞老黄！', 'ankle');
       }
-      this.callbacks.onShotMeterUpdate(0, false, null, this.aiDefender.contestPercent);
+      this.callbacks.onShotMeterUpdate(0, false, null, this.aiDefender.contestPercent, this.getPlayerScreenPos());
       return;
     }
 
@@ -755,13 +774,25 @@ export class GameEngine {
     // 7. Shot Meter Charge Progress
     if (this.isChargingShot) {
       const elapsed = (performance.now() - this.shotChargeStartTime) / 1000;
-      const progress = Math.min(elapsed / this.sweetSpotDuration, 1.3);
-      const isGreen = Math.abs(elapsed - this.sweetSpotDuration) < 0.04;
+      // Normalizes progress: 0 to 100 where 80% is the exact sweet spot!
+      const progress = Math.min((elapsed / this.sweetSpotDuration) * 80, 100);
+      const isGreen = Math.abs(elapsed - this.sweetSpotDuration) < 0.055;
+
+      // Audio cue when entering the green sweet-spot window
+      if (isGreen && !this.wasGreenLastFrame) {
+        sounds.playGreenChime();
+        this.wasGreenLastFrame = true;
+      } else if (!isGreen && elapsed > this.sweetSpotDuration + 0.055) {
+        this.wasGreenLastFrame = false;
+      }
+
+      const screenPos = this.getPlayerScreenPos();
       this.callbacks.onShotMeterUpdate(
-        Math.min(progress * 100, 100),
+        Math.min(progress, 100),
         isGreen,
         null,
-        this.aiDefender.contestPercent
+        this.aiDefender.contestPercent,
+        screenPos
       );
     }
 

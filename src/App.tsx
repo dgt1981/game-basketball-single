@@ -64,6 +64,8 @@ export default function App() {
   const [showReplayModal, setShowReplayModal] = useState<boolean>(false);
   const [showLeaderboardModal, setShowLeaderboardModal] = useState<boolean>(false);
 
+  const [playerScreenPos, setPlayerScreenPos] = useState<{ x: number; y: number } | null>(null);
+
   // Mutable callbacks container for GameEngine to avoid recreating canvas
   const callbacksRef = useRef({
     onPhaseChange: (newPhase: GamePhase) => {
@@ -80,12 +82,14 @@ export default function App() {
       val: number,
       green: boolean,
       rating: ShotRating | null,
-      contest: number
+      contest: number,
+      pos?: { x: number; y: number }
     ) => {
       setShotMeterValue(val);
       setIsGreen(green);
       setShotRating(rating);
       setContestPercent(contest);
+      if (pos) setPlayerScreenPos(pos);
     },
     onShotResult: (result: ShotResult) => {
       // Handled in engine
@@ -115,7 +119,7 @@ export default function App() {
       onPhaseChange: (p) => callbacksRef.current.onPhaseChange(p),
       onScoreUpdate: (p, a) => callbacksRef.current.onScoreUpdate(p, a),
       onShotClockUpdate: (s) => callbacksRef.current.onShotClockUpdate(s),
-      onShotMeterUpdate: (v, g, r, c) => callbacksRef.current.onShotMeterUpdate(v, g, r, c),
+      onShotMeterUpdate: (v, g, r, c, pos) => callbacksRef.current.onShotMeterUpdate(v, g, r, c, pos),
       onShotResult: (r) => callbacksRef.current.onShotResult(r),
       onMatchFinished: (w, st) => callbacksRef.current.onMatchFinished(w, st),
       onHighlightReady: (clip) => callbacksRef.current.onHighlightReady(clip),
@@ -207,6 +211,7 @@ export default function App() {
           difficulty={difficulty}
           shotMeterValue={shotMeterValue}
           isGreen={isGreen}
+          playerScreenPos={playerScreenPos}
           shotRating={shotRating}
           contestPercent={contestPercent}
           feedbackToast={feedbackToast}
