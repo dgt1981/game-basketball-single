@@ -380,6 +380,30 @@ export function createCharacter(options: {
         leftArm.rotation.set(0.8, 0, 0.4);
         break;
 
+      case 'dunk_windup':
+        // Tomahawk dunk takeoff: right arm cocked far back behind head, arched back
+        torso.position.y = 1.35;
+        torso.rotation.x = -0.35;
+        rightArm.rotation.set(3.2, 0, -0.35);
+        leftArm.rotation.set(1.4, 0, 0.45);
+        leftLeg.rotation.set(-0.7, 0, -0.15);
+        leftKnee.rotation.set(1.1, 0, 0);
+        rightLeg.rotation.set(0.3, 0, 0.15);
+        rightKnee.rotation.set(0.6, 0, 0);
+        break;
+
+      case 'dunk_slam':
+        // Power slam downwards over the rim
+        torso.position.y = 1.25;
+        torso.rotation.x = 0.45;
+        rightArm.rotation.set(1.8, 0, -0.1);
+        leftArm.rotation.set(1.1, 0, 0.3);
+        leftLeg.rotation.set(-0.2, 0, 0);
+        rightLeg.rotation.set(-0.2, 0, 0);
+        leftKnee.rotation.set(0.8, 0, 0);
+        rightKnee.rotation.set(0.8, 0, 0);
+        break;
+
       case 'stance': // AI defensive stance
         leftLeg.rotation.set(-0.35, 0, -0.3);
         rightLeg.rotation.set(-0.35, 0, 0.3);

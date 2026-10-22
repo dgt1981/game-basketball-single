@@ -24,6 +24,7 @@ interface HUDProps {
   onTouchShootRelease: () => void;
   onTriggerStepback: () => void;
   onTriggerCrossover: () => void;
+  onTriggerDunk: () => void;
 }
 
 export const HUD: React.FC<HUDProps> = ({
@@ -45,6 +46,7 @@ export const HUD: React.FC<HUDProps> = ({
   onTouchShootRelease,
   onTriggerStepback,
   onTriggerCrossover,
+  onTriggerDunk,
 }) => {
   const [isControlsCollapsed, setIsControlsCollapsed] = useState(false);
   const [isMuted, setIsMuted] = useState(sounds.getMuted());
@@ -354,6 +356,15 @@ export const HUD: React.FC<HUDProps> = ({
                   点击专属技能按钮，瞬间急停后撤拉开 3 分空间或晃倒老黄！
                 </div>
               </div>
+              <div className="flex items-start gap-2">
+                <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 font-bold shrink-0">
+                  暴扣
+                </span>
+                <div>
+                  <strong className="text-white">战斧暴扣 (V)：</strong>
+                  需冲刺切入禁区(3.8米内)起跳！若老黄正面拦截有被大帽或扣飞风险；可先用变向(C)晃倒老黄，或在起跳至最高点瞬间再次按键(V)触发完美抓扣强碾封盖！
+                </div>
+              </div>
             </div>
             <button
               onClick={() => setShowMobileHelp(false)}
@@ -379,6 +390,17 @@ export const HUD: React.FC<HUDProps> = ({
         <div className="pointer-events-auto flex flex-col items-end gap-2.5">
           {/* Secondary Skill Buttons Row */}
           <div className="flex items-center gap-2">
+            <button
+              onClick={onTriggerDunk}
+              style={{ touchAction: 'none' }}
+              className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-600 via-rose-600 to-red-600 border-2 border-amber-400/90 text-white active:scale-90 shadow-xl flex flex-col items-center justify-center font-black text-[10px] leading-tight transition cursor-pointer"
+              title="战斧暴扣 (V)"
+            >
+              <span className="text-[12px]">🔥</span>
+              <span>暴扣</span>
+              <span className="text-[7px] opacity-90 font-mono -mt-0.5">V</span>
+            </button>
+
             <button
               onClick={onTriggerCrossover}
               style={{ touchAction: 'none' }}
@@ -439,13 +461,14 @@ export const HUD: React.FC<HUDProps> = ({
         </button>
 
         {!isControlsCollapsed && (
-          <div className="w-full bg-slate-950/90 border border-slate-800 rounded-b-xl p-2 sm:p-2.5 shadow-2xl flex items-center justify-center gap-4 text-[10px] sm:text-xs text-slate-400">
+          <div className="w-full bg-slate-950/90 border border-slate-800 rounded-b-xl p-2 sm:p-2.5 shadow-2xl flex items-center justify-center gap-3 sm:gap-4 text-[10px] sm:text-xs text-slate-400 flex-wrap">
             <span className="hidden sm:inline">💻 电脑按键：</span>
             <span><strong className="text-white">WASD</strong> 移动</span>
             <span><strong className="text-white">Shift</strong> 加速</span>
             <span><strong className="text-amber-400">空格</strong> 投篮/假投</span>
-            <span><strong className="text-white">X</strong> 后撤步</span>
-            <span><strong className="text-white">C</strong> 变向晃人</span>
+            <span><strong className="text-rose-400 font-bold">V</strong> 战斧暴扣 (需冲刺禁区/二段抓筐)</span>
+            <span><strong className="text-purple-400">C</strong> 变向晃人</span>
+            <span><strong className="text-cyan-400">X</strong> 后撤步</span>
           </div>
         )}
       </footer>

@@ -229,6 +229,9 @@ export default function App() {
             // Send synthetic keydown 'KeyC' to engine
             window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyC' }));
           }}
+          onTriggerDunk={() => {
+            engineRef.current?.onTouchDunk();
+          }}
         />
       )}
 

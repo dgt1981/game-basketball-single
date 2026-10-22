@@ -114,7 +114,18 @@ export class GameEngine {
   private netAnimTimer: number = -1;
   private celebrationTimer: number = 0;
 
-  // Camera Cinematic Angles
+  // Slam Dunk Mechanics
+  private isDunking: boolean = false;
+  private dunkProgress: number = 0;
+  private dunkStartPos: THREE.Vector3 = new THREE.Vector3();
+  private dunkTargetPos: THREE.Vector3 = new THREE.Vector3();
+  private dunkDuration: number = 0.85;
+  private hasTriggeredDunkScore: boolean = false;
+  private dunkCooldownTimer: number = 0;
+  private dunkOutcome: 'SUCCESS' | 'BLOCKED' | 'CLANKED' = 'SUCCESS';
+  private canTimeDunk: boolean = false;
+  private hasTimedDunk: boolean = false;
+  private dunkContestLevel: number = 0;
   private titlePanAngle: number = 0;
 
   constructor(container: HTMLDivElement, callbacks: GameEngineCallbacks) {
@@ -268,6 +279,12 @@ export class GameEngine {
         this.triggerCrossover();
       }
 
+      // Slam Dunk trigger: KeyV
+      if (e.code === 'KeyV' && this.phase === 'PLAYING') {
+        e.preventDefault();
+        this.triggerDunk();
+      }
+
       // Enter to start from title
       if (e.code === 'Enter' && this.phase === 'TITLE') {
         this.startMatch();
@@ -308,6 +325,12 @@ export class GameEngine {
   public onTouchShootRelease() {
     if (this.phase === 'PLAYING' && this.isChargingShot) {
       this.releaseShot();
+    }
+  }
+
+  public onTouchDunk() {
+    if (this.phase === 'PLAYING') {
+      this.triggerDunk();
     }
   }
 
@@ -402,8 +425,17 @@ export class GameEngine {
 
     this.shotClock = SHOT_CLOCK_DURATION;
     this.isChargingShot = false;
+    this.isDunking = false;
+    this.dunkProgress = 0;
+    this.hasTriggeredDunkScore = false;
+    this.canTimeDunk = false;
+    this.hasTimedDunk = false;
+    this.dunkOutcome = 'SUCCESS';
     this.pendingShotResult = null;
     this.shotFlightTimer = 0;
+    if (this.courtElements?.rimMesh) {
+      this.courtElements.rimMesh.rotation.x = 0;
+    }
   }
 
   private getPlayerScreenPos(): { x: number; y: number } {
@@ -522,12 +554,156 @@ export class GameEngine {
 
     this.pendingShotResult = shotResult;
     this.callbacks.onShotResult(shotResult);
-    this.callbacks.onShotMeterUpdate(100, isGreen, rating, contestPct);
+    this.callbacks.onShotMeterUpdate(100, isGreen, rating, contestPct, this.getPlayerScreenPos());
+
+    // Auto-hide the shot meter quickly after 320ms so it doesn't linger on screen
+    setTimeout(() => {
+      this.callbacks.onShotMeterUpdate(0, false, null, 0);
+    }, 320);
 
     // Announce contest toast
     if (contestPct > 55) {
       this.callbacks.onFeedbackToast(`🛡️ 老黄严密干扰 ${contestPct}%!`, 'contest');
     }
+  }
+
+  public triggerDunk() {
+    if (this.phase !== 'PLAYING') return;
+
+    // Check apex timing if currently airborne in dunk!
+    if (this.isDunking) {
+      if (this.canTimeDunk && !this.hasTimedDunk) {
+        const p = this.dunkProgress;
+        if (p >= 0.45 && p <= 0.68) {
+          // PERFECT APEX TIMING (GREEN DUNK)!
+          this.hasTimedDunk = true;
+          this.canTimeDunk = false;
+          this.dunkOutcome = 'SUCCESS';
+          sounds.playGreenChime();
+          this.callbacks.onFeedbackToast('🟢 完美抓筐 (GREEN SLAM)！暴力砸扣硬解老黄！', 'green');
+          if (this.aiDefender) {
+            this.aiDefender.stumbleTimer = 1.3;
+            this.aiDefender.pose = 'stumble';
+            this.aiDefender.rig.setPose('stumble');
+          }
+        } else if (p < 0.45) {
+          this.canTimeDunk = false;
+          this.callbacks.onFeedbackToast('⚠️ 发力过早 (EARLY)！未到起跳最高点', 'miss');
+        } else {
+          this.canTimeDunk = false;
+          this.callbacks.onFeedbackToast('⚠️ 抓筐过晚 (LATE)！已被老黄封盖', 'miss');
+        }
+      }
+      return;
+    }
+
+    if (!this.ballPhysics.isHeld || this.isChargingShot) return;
+
+    // 1. Skill Cooldown Check (3.5s cooldown)
+    if (this.dunkCooldownTimer > 0) {
+      this.callbacks.onFeedbackToast(`⏳ 暴扣技能蓄能中 (剩余 ${this.dunkCooldownTimer.toFixed(1)}s)`, 'miss');
+      return;
+    }
+
+    const hoopPos = new THREE.Vector3(COURT.HOOP_X, 0, COURT.HOOP_Z);
+    const dist = this.playerPos.distanceTo(hoopPos);
+
+    // 2. Realistic Takeoff Range Check (strict paint area: 1.1m to 3.8m)
+    if (dist > 3.8) {
+      this.callbacks.onFeedbackToast(`⚠️ 距离篮筐 ${dist.toFixed(1)}米 过远！请冲入禁区 (3.8m内) 方可起跳暴扣`, 'miss');
+      return;
+    }
+
+    if (dist < 1.1) {
+      this.callbacks.onFeedbackToast('⚠️ 距离过近被卡死！无法获得起跳冲力', 'miss');
+      return;
+    }
+
+    if (this.playerPos.z < COURT.HOOP_Z - 0.2) {
+      this.callbacks.onFeedbackToast('⚠️ 位于篮板后方，无法起飞扣篮！', 'miss');
+      return;
+    }
+
+    // 3. Momentum Requirement (Must be accelerating towards the hoop!)
+    const toHoop = hoopPos.clone().sub(this.playerPos).normalize();
+    const forwardSpeed = this.playerVelocity.dot(toHoop);
+    if (forwardSpeed < 1.0) {
+      this.callbacks.onFeedbackToast('⚠️ 暴扣需要助跑动量！请按住方向键朝篮筐冲刺切入', 'miss');
+      return;
+    }
+
+    // Launch Dunk!
+    this.isDunking = true;
+    this.dunkProgress = 0;
+    this.hasTriggeredDunkScore = false;
+    this.dunkCooldownTimer = 3.5;
+    this.canTimeDunk = true;
+    this.hasTimedDunk = false;
+    this.dunkStartPos.copy(this.playerPos);
+    this.dunkTargetPos.set(COURT.HOOP_X, 0, COURT.HOOP_Z + 0.65);
+    this.dunkDuration = Math.max(0.72, Math.min(0.92, dist * 0.16 + 0.48));
+
+    sounds.playWhoosh();
+
+    // 4. Tactical Evaluation of AI Defender Positioning & Contest
+    const aiDist = this.playerPos.distanceTo(this.aiDefender.position);
+    const toDefender = this.aiDefender.position.clone().sub(this.playerPos);
+    const defenderToHoop = hoopPos.clone().sub(this.aiDefender.position);
+    const isDefenderInPath = toHoop.dot(toDefender.clone().normalize()) > 0.35 && defenderToHoop.length() < dist;
+
+    // Scenario A: Old Huang is already stumbling/fallen from a crossover or stepback!
+    if (this.aiDefender.stumbleTimer > 0) {
+      this.dunkOutcome = 'SUCCESS';
+      this.dunkContestLevel = 0;
+      this.callbacks.onFeedbackToast('⚡ 趁老黄失衡！起飞战斧劈扣！', 'score');
+      return;
+    }
+
+    // Scenario B: Wide Open / Clean Lane (defender behind shooter or blown by)
+    if (!isDefenderInPath || aiDist > 2.0) {
+      this.dunkOutcome = 'SUCCESS';
+      this.dunkContestLevel = 10;
+      this.callbacks.onFeedbackToast('⚡ 甩开防守！腾空展腹暴扣！', 'score');
+      return;
+    }
+
+    // Scenario C: Old Huang is guarding head-on in the paint!
+    this.dunkContestLevel = Math.round(Math.min(95, 55 + (2.0 - aiDist) * 25));
+    this.aiDefender.isAirborne = true;
+    this.aiDefender.jumpVelocity = 5.0;
+    this.aiDefender.pose = 'block_jump';
+    this.aiDefender.rig.setPose('block_jump');
+
+    // Difficulty-based block odds
+    let blockChance = 0.50;
+    let clankChance = 0.25;
+    if (this.difficulty === 'rookie') {
+      blockChance = 0.28;
+      clankChance = 0.20;
+    } else if (this.difficulty === 'pro') {
+      blockChance = 0.48;
+      clankChance = 0.25;
+    } else if (this.difficulty === 'allstar') {
+      blockChance = 0.65;
+      clankChance = 0.20;
+    } else if (this.difficulty === 'legend') {
+      blockChance = 0.78;
+      clankChance = 0.15;
+    }
+
+    const roll = Math.random();
+    if (roll < blockChance) {
+      this.dunkOutcome = 'BLOCKED';
+    } else if (roll < blockChance + clankChance) {
+      this.dunkOutcome = 'CLANKED';
+    } else {
+      this.dunkOutcome = 'SUCCESS';
+    }
+
+    this.callbacks.onFeedbackToast(
+      `⚠️ 老黄正面严密拦截 (${this.dunkContestLevel}%)！空中抓准最高点(V)可强行硬解！`,
+      'contest'
+    );
   }
 
   private triggerStepBack() {
@@ -657,13 +833,22 @@ export class GameEngine {
       return;
     }
 
-    // 2. Net Swish Animation
+    // 2. Net Swish & Rim Breakaway Spring Back
     if (this.netAnimTimer >= 0) {
       this.netAnimTimer += dt;
       this.courtElements.animateNet(this.netAnimTimer);
-      if (this.netAnimTimer > 1.2) {
+      if (this.netAnimTimer > 1.25) {
         this.netAnimTimer = -1;
       }
+    }
+    // Smooth elastic spring back for breakaway rim
+    if (Math.abs(this.courtElements.rimMesh.rotation.x) > 0.0005) {
+      this.courtElements.rimMesh.rotation.x = THREE.MathUtils.damp(
+        this.courtElements.rimMesh.rotation.x,
+        0,
+        10.0,
+        dt
+      );
     }
 
     // 3. Title Screen Cinematic Pan
@@ -693,7 +878,11 @@ export class GameEngine {
 
     if (this.phase !== 'PLAYING' && this.phase !== 'SHOT_IN_FLIGHT') return;
 
-    // 5. Shot Clock Countdown
+    // 5. Shot Clock Countdown & Dunk Cooldown
+    if (this.dunkCooldownTimer > 0) {
+      this.dunkCooldownTimer -= dt;
+    }
+
     if (this.phase === 'PLAYING') {
       this.shotClock -= dt;
       this.callbacks.onShotClockUpdate(Math.max(0, Math.ceil(this.shotClock)));
@@ -705,8 +894,178 @@ export class GameEngine {
       }
     }
 
+    // 5.5 Airborne Dunk Execution
+    if (this.isDunking) {
+      this.dunkProgress += dt / this.dunkDuration;
+      const p = Math.min(1.0, this.dunkProgress);
+
+      // Horizontal glide towards rim
+      this.playerPos.x = THREE.MathUtils.lerp(this.dunkStartPos.x, this.dunkTargetPos.x, p);
+      this.playerPos.z = THREE.MathUtils.lerp(this.dunkStartPos.z, this.dunkTargetPos.z, p);
+
+      // Parabolic jump: soars up to apex of 2.05m
+      const apexY = 2.05;
+      this.playerPos.y = Math.sin(p * Math.PI) * apexY;
+
+      // Face the hoop
+      this.playerRot = Math.atan2(COURT.HOOP_X - this.playerPos.x, COURT.HOOP_Z - this.playerPos.z);
+      this.playerRig.group.position.copy(this.playerPos);
+      this.playerRig.group.rotation.y = this.playerRot;
+
+      // Dunk animation phases
+      if (p < 0.58) {
+        // Windup: cock arm back high
+        this.playerRig.setPose('dunk_windup');
+        this.ballPhysics.position.set(
+          this.playerPos.x + 0.35,
+          this.playerPos.y + 2.35,
+          this.playerPos.z + 0.25
+        );
+      } else if (p < 0.88) {
+        this.playerRig.setPose('dunk_slam');
+
+        // Check BLOCKED outcome: Old Huang shuts it down at the apex!
+        if (this.dunkOutcome === 'BLOCKED' && !this.hasTriggeredDunkScore && p >= 0.62) {
+          this.hasTriggeredDunkScore = true;
+          this.canTimeDunk = false;
+          sounds.playBlock();
+          sounds.playRimHit(0.5);
+
+          // Ball is swatted backwards into court as loose live ball
+          this.ballPhysics.isHeld = false;
+          this.ballPhysics.inAir = true;
+          this.ballPhysics.hasScored = false;
+          this.ballPhysics.scoreTriggered = false;
+          this.ballPhysics.position.set(
+            this.playerPos.x * 0.5 + COURT.HOOP_X * 0.5,
+            2.6,
+            this.playerPos.z * 0.5 + COURT.HOOP_Z * 0.5
+          );
+          this.ballPhysics.velocity.set(
+            (Math.random() - 0.5) * 4.5,
+            3.8,
+            4.2 + Math.random() * 2.5
+          );
+
+          this.stats.fgAttempts++;
+          this.stats.blocks++;
+          this.callbacks.onFeedbackToast('🚫 老黄遮天蔽日！当头血帽拒绝暴扣！', 'contest');
+
+          this.phase = 'SHOT_IN_FLIGHT';
+          this.shotFlightTimer = 0;
+          this.callbacks.onPhaseChange(this.phase);
+        }
+        // Check CLANKED outcome: Ball rattles violently off back iron
+        else if (this.dunkOutcome === 'CLANKED' && !this.hasTriggeredDunkScore && p >= 0.72) {
+          this.hasTriggeredDunkScore = true;
+          this.canTimeDunk = false;
+          sounds.playRimHit(1.9);
+          this.courtElements.rimMesh.rotation.x = 0.14; // Realistic downward rim bend and vibration
+
+          // Ball clanks off back iron high into the air
+          this.ballPhysics.isHeld = false;
+          this.ballPhysics.inAir = true;
+          this.ballPhysics.hasScored = false;
+          this.ballPhysics.scoreTriggered = false;
+          this.ballPhysics.position.set(COURT.HOOP_X, COURT.HOOP_Y + 0.15, COURT.HOOP_Z);
+          this.ballPhysics.velocity.set(
+            (Math.random() - 0.5) * 4.0,
+            5.5,
+            3.8 + Math.random() * 2.0
+          );
+
+          this.stats.fgAttempts++;
+          this.callbacks.onFeedbackToast('💥 激烈对抗下脱手！战斧扣飞磕筐弹出！', 'miss');
+
+          this.phase = 'SHOT_IN_FLIGHT';
+          this.shotFlightTimer = 0;
+          this.callbacks.onPhaseChange(this.phase);
+        }
+        // Check SUCCESS outcome: Ball slammed cleanly into net!
+        else if (this.dunkOutcome === 'SUCCESS') {
+          const slamP = (p - 0.58) / 0.3;
+          const bX = THREE.MathUtils.lerp(this.playerPos.x + 0.25, COURT.HOOP_X, slamP);
+          const bY = THREE.MathUtils.lerp(this.playerPos.y + 2.35, COURT.HOOP_Y - 0.1, slamP);
+          const bZ = THREE.MathUtils.lerp(this.playerPos.z + 0.25, COURT.HOOP_Z, slamP);
+          this.ballPhysics.position.set(bX, bY, bZ);
+
+          if (!this.hasTriggeredDunkScore && p >= 0.72) {
+            this.hasTriggeredDunkScore = true;
+            this.canTimeDunk = false;
+            sounds.playRimHit(1.6);
+            sounds.playSwish();
+            sounds.playCheer();
+            this.courtElements.animateNet(0);
+            this.courtElements.rimMesh.rotation.x = 0.22; // Bends breakaway rim downwards realistically!
+
+            this.playerScore += 2;
+            this.stats.points += 2;
+            this.stats.fgMade++;
+            this.stats.fgAttempts++;
+            this.callbacks.onScoreUpdate(this.playerScore, this.aiScore);
+
+            if (this.dunkContestLevel > 35) {
+              this.stats.ankleBreakers++;
+              this.callbacks.onFeedbackToast('🔥 残暴隔扣！力压老黄撕裂防线 (+2分)', 'score');
+            } else {
+              this.callbacks.onFeedbackToast('⚡ 战斧暴扣！潇洒虐筐 (+2分)', 'score');
+            }
+
+            // Confetti
+            try {
+              import('canvas-confetti').then((confetti) => {
+                confetti.default({
+                  particleCount: 65,
+                  spread: 80,
+                  origin: { y: 0.55 },
+                });
+              });
+            } catch {}
+          }
+        }
+      } else {
+        // Landing & hang
+        this.playerRig.setPose('idle');
+        if (this.dunkOutcome === 'SUCCESS') {
+          this.ballPhysics.position.set(
+            COURT.HOOP_X,
+            Math.max(0.12, COURT.HOOP_Y - 1.2 - (p - 0.88) * 3.5),
+            COURT.HOOP_Z + 0.25
+          );
+        }
+      }
+
+      if (this.dunkOutcome === 'SUCCESS' || !this.hasTriggeredDunkScore) {
+        this.ballMesh.position.copy(this.ballPhysics.position);
+        this.ballShadow.position.set(this.ballPhysics.position.x, 0.01, this.ballPhysics.position.z);
+        const shadowScale = Math.max(0.3, 1.0 - this.ballPhysics.position.y / 5.0);
+        this.ballShadow.scale.set(shadowScale, shadowScale, shadowScale);
+      }
+
+      // End of Dunk flight
+      if (p >= 1.0) {
+        this.isDunking = false;
+        this.canTimeDunk = false;
+        this.playerPos.y = 0;
+        this.playerRig.group.position.copy(this.playerPos);
+
+        if (this.dunkOutcome === 'SUCCESS') {
+          if (this.playerScore >= WINNING_SCORE) {
+            this.phase = 'MATCH_OVER';
+            this.callbacks.onPhaseChange(this.phase);
+            this.callbacks.onMatchFinished(true, this.stats);
+          } else {
+            this.phase = 'SCORED_CELEBRATION';
+            this.celebrationTimer = 1.6;
+            this.callbacks.onPhaseChange(this.phase);
+          }
+        }
+      }
+      return;
+    }
+
     // 6. Player Movement & Dribbling
-    if (this.phase === 'PLAYING' && !this.isChargingShot) {
+    if (this.phase === 'PLAYING' && !this.isChargingShot && !this.isDunking) {
       const moveInput = new THREE.Vector2();
       if (this.keys['KeyW'] || this.keys['ArrowUp']) moveInput.y -= 1;
       if (this.keys['KeyS'] || this.keys['ArrowDown']) moveInput.y += 1;
@@ -774,6 +1133,13 @@ export class GameEngine {
     // 7. Shot Meter Charge Progress
     if (this.isChargingShot) {
       const elapsed = (performance.now() - this.shotChargeStartTime) / 1000;
+
+      // Auto force release if player holds for too long (> 1.15s)
+      if (elapsed > 1.15) {
+        this.releaseShot();
+        return;
+      }
+
       // Normalizes progress: 0 to 100 where 80% is the exact sweet spot!
       const progress = Math.min((elapsed / this.sweetSpotDuration) * 80, 100);
       const isGreen = Math.abs(elapsed - this.sweetSpotDuration) < 0.055;
@@ -798,7 +1164,11 @@ export class GameEngine {
 
     // 8. Ball in Flight Physics
     if (this.phase === 'SHOT_IN_FLIGHT') {
+      const prevCollidedRim = this.ballPhysics.hasCollidedRim;
       stepBallPhysics(this.ballPhysics, dt, () => this.onBasketScored());
+      if (!prevCollidedRim && this.ballPhysics.hasCollidedRim) {
+        this.courtElements.rimMesh.rotation.x = 0.08; // Subtle metallic rim rattle when ball clangs iron
+      }
       this.ballMesh.position.copy(this.ballPhysics.position);
       this.ballMesh.rotation.x += this.ballPhysics.angularVelocity.x * dt;
       this.ballMesh.rotation.z += this.ballPhysics.angularVelocity.z * dt;

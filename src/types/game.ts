@@ -48,7 +48,7 @@ export interface ReplayKeyframe {
   timestamp: number;
   playerPos: [number, number, number];
   playerRot: number;
-  playerPose: 'idle' | 'dribble' | 'run' | 'gather' | 'jump_shoot' | 'layup' | 'crossover' | 'celebrate';
+  playerPose: 'idle' | 'dribble' | 'run' | 'gather' | 'jump_shoot' | 'layup' | 'crossover' | 'celebrate' | 'dunk_windup' | 'dunk_slam';
   aiPos: [number, number, number];
   aiRot: number;
   aiPose: 'stance' | 'slide' | 'contest' | 'block_jump' | 'stumble' | 'rebound';

@@ -169,8 +169,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
         {/* Single Flat Control-Hint Line */}
         <div className="mt-6 flex flex-col items-center gap-1.5 text-xs text-slate-400 tracking-wide font-medium">
-          <div>电脑端：WASD 移动 · 空格 投篮/假投 · X 后撤步 · C 变向晃人</div>
-          <div className="text-amber-400 font-semibold text-[11px]">📱 手机触屏：左下角虚拟摇杆 360° 移动，右下角专属按键投篮/突破</div>
+          <div>电脑端：WASD 移动 · 空格 投篮/假投 · V 战斧暴扣 · C 变向晃人 · X 后撤步</div>
+          <div className="text-amber-400 font-semibold text-[11px]">📱 手机触屏：左下角虚拟摇杆 360° 移动，右下角专属按键投篮/暴扣/突破</div>
         </div>
       </div>
 
