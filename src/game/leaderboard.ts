@@ -233,34 +233,125 @@ export function submitPlayerScore(
 }
 
 /**
- * Backend API URL for PHP server integration
+ * Backend API URL for PHP server integration.
+ * Resolves relative to current page location to support root (/) or any subfolder (/single-ball/) deployment.
  */
-export const BACKEND_API_URL =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_LEADERBOARD_API) ||
-  '/backend/leaderboard.php';
+export function getLeaderboardApiUrl(): string {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_LEADERBOARD_API) {
+    return import.meta.env.VITE_LEADERBOARD_API;
+  }
+  if (typeof window !== 'undefined' && window.location) {
+    try {
+      return new URL('backend/leaderboard.php', window.location.href).href;
+    } catch {
+      return './backend/leaderboard.php';
+    }
+  }
+  return './backend/leaderboard.php';
+}
 
 /**
- * Fetch leaderboard from PHP backend with fallback to localStorage
+ * Universal normalizer: converts any backend JSON row (snake_case from MySQL or camelCase) into LeaderboardEntry
+ */
+export function normalizeLeaderboardRow(raw: any, index: number): LeaderboardEntry {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      id: `item_${index}`,
+      rank: index + 1,
+      playerName: '街球选手',
+      avatar: '🏀',
+      country: '中国',
+      countryCode: 'CN',
+      difficulty: 'allstar',
+      score: 11,
+      fgPercentage: 0,
+      threePointPercentage: 0,
+      winStreak: 0,
+      mvpRating: 0,
+      date: new Date().toISOString().split('T')[0],
+    };
+  }
+
+  const rawDiff = String(raw.difficulty || raw.Difficulty || 'allstar').toLowerCase();
+  const validDiff: DifficultyLevel =
+    rawDiff === 'rookie' || rawDiff === 'pro' || rawDiff === 'allstar' || rawDiff === 'legend'
+      ? rawDiff
+      : 'allstar';
+
+  return {
+    id: String(raw.id || raw.ID || `db_${index}`),
+    rank: Number(raw.rank || raw.Rank || index + 1),
+    playerName: String(
+      raw.playerName || raw.player_name || raw.name || raw.username || '街球选手'
+    ),
+    avatar: String(raw.avatar || raw.Avatar || '🏀'),
+    country: String(raw.country || raw.Country || '中国'),
+    countryCode: String(raw.countryCode || raw.country_code || 'CN'),
+    difficulty: validDiff,
+    score: Number(raw.score ?? raw.Score ?? 11),
+    fgPercentage: Number(raw.fgPercentage ?? raw.fg_percentage ?? raw.fgPct ?? raw.fg ?? 0),
+    threePointPercentage: Number(
+      raw.threePointPercentage ?? raw.three_point_percentage ?? raw.threePct ?? raw.three ?? 0
+    ),
+    winStreak: Number(raw.winStreak ?? raw.win_streak ?? raw.streak ?? 0),
+    mvpRating: Number(raw.mvpRating ?? raw.mvp_rating ?? raw.mvp ?? raw.score ?? 0),
+    date: String(
+      raw.date || raw.created_at || raw.createdAt || new Date().toISOString().split('T')[0]
+    ).slice(0, 10),
+    isUser: Boolean(raw.isUser ?? raw.is_user ?? false),
+  };
+}
+
+/**
+ * Fetch leaderboard from PHP backend with fallback to localStorage.
+ * Handles all JSON formats: raw array [...], { data: [...] }, { rows: [...] }, { list: [...] }.
  */
 export async function fetchRemoteLeaderboard(
   difficulty: string = 'all',
   sort: string = 'mvp'
 ): Promise<LeaderboardEntry[] | null> {
+  const url = getLeaderboardApiUrl();
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s quick timeout
-    const res = await fetch(`${BACKEND_API_URL}?difficulty=${difficulty}&sort=${sort}&limit=50`, {
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const separator = url.includes('?') ? '&' : '?';
+    const queryUrl = `${url}${separator}difficulty=${encodeURIComponent(
+      difficulty
+    )}&sort=${encodeURIComponent(sort)}&limit=50`;
+
+    const res = await fetch(queryUrl, {
       signal: controller.signal,
+      cache: 'no-cache',
     });
     clearTimeout(timeoutId);
 
-    if (!res.ok) return null;
-    const json = await res.json();
-    if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-      return json.data;
+    if (!res.ok) {
+      console.warn(`[Leaderboard API] HTTP error ${res.status}`);
+      return null;
     }
-  } catch {
-    // Backend not deployed or unreachable, silently fall back
+
+    const json = await res.json();
+
+    // Extract list from various server JSON formats
+    let rawList: any[] | null = null;
+    if (Array.isArray(json)) {
+      rawList = json;
+    } else if (Array.isArray(json?.data)) {
+      rawList = json.data;
+    } else if (Array.isArray(json?.rows)) {
+      rawList = json.rows;
+    } else if (Array.isArray(json?.list)) {
+      rawList = json.list;
+    } else if (Array.isArray(json?.result)) {
+      rawList = json.result;
+    }
+
+    if (rawList && rawList.length > 0) {
+      const normalized = rawList.map((row, idx) => normalizeLeaderboardRow(row, idx));
+      return normalized;
+    }
+  } catch (err) {
+    console.warn('[Leaderboard API] Request failed:', err);
   }
   return null;
 }
@@ -271,10 +362,11 @@ export async function fetchRemoteLeaderboard(
 export async function submitRemoteScore(
   payload: Record<string, unknown>
 ): Promise<{ entry: LeaderboardEntry; rank: number } | null> {
+  const url = getLeaderboardApiUrl();
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
-    const res = await fetch(BACKEND_API_URL, {
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -282,10 +374,11 @@ export async function submitRemoteScore(
     });
     clearTimeout(timeoutId);
 
-    if (!res.ok) return null;
     const json = await res.json();
-    if (json.success && json.data) {
-      return { entry: json.data, rank: json.data.rank };
+    const rawData = json?.data || json;
+    if (rawData && typeof rawData === 'object') {
+      const normalized = normalizeLeaderboardRow(rawData, 0);
+      return { entry: normalized, rank: normalized.rank };
     }
   } catch {
     // Fall back to local

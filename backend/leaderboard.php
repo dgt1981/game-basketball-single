@@ -1,7 +1,7 @@
 <?php
 /**
  * 挑战老黄 3D - 游戏排行榜读写接口 (API)
- * 支持 GET (获取排名) 和 POST (提交战绩)
+ * 支持 GET (获取排名) 和 POST (提交战绩) 及 ping 连通性测试
  */
 
 header('Content-Type: application/json; charset=utf-8');
@@ -19,6 +19,32 @@ require_once __DIR__ . '/config.php';
 $pdo = getDbConnection();
 
 $method = $_SERVER['REQUEST_METHOD'];
+
+// ==========================================
+// 0. PING / 连通性自检接口 (?action=ping)
+// ==========================================
+if (isset($_GET['action']) && $_GET['action'] === 'ping') {
+    try {
+        $checkStmt = $pdo->query("SELECT COUNT(*) AS `total` FROM `game_leaderboard`");
+        $count = $checkStmt->fetchColumn();
+        echo json_encode([
+            'success'     => true,
+            'status'      => 'connected',
+            'message'     => 'MySQL 数据库连接正常',
+            'total_rows'  => (int)$count,
+            'db_name'     => DB_NAME,
+            'server_time' => date('Y-m-d H:i:s'),
+        ], JSON_UNESCAPED_UNICODE);
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success'    => false,
+            'error_type' => 'table_missing',
+            'message'    => '数据表未找到或读取失败: ' . $e->getMessage() . ' (请导入 schema.sql)',
+        ], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
 
 // ==========================================
 // 1. GET 请求: 查询排行榜列表
@@ -92,14 +118,16 @@ if ($method === 'GET') {
 
         echo json_encode([
             'success' => true,
+            'source'  => 'mysql',
             'total'   => count($data),
             'data'    => $data,
         ], JSON_UNESCAPED_UNICODE);
     } catch (PDOException $e) {
         http_response_code(500);
         echo json_encode([
-            'success' => false,
-            'message' => '查询排行榜失败: ' . $e->getMessage(),
+            'success'    => false,
+            'error_type' => 'query_error',
+            'message'    => '查询排行榜失败: ' . $e->getMessage() . ' (请确认已执行 schema.sql 创建表结构)',
         ], JSON_UNESCAPED_UNICODE);
     }
     exit;

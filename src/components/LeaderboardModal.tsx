@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trophy, Medal, Flame, Target, Award, Filter } from 'lucide-react';
-import { LeaderboardEntry, DifficultyLevel } from '../types/game';
+import { LeaderboardEntry } from '../types/game';
 import { getLeaderboard, fetchRemoteLeaderboard } from '../game/leaderboard';
 
 interface LeaderboardModalProps {
@@ -26,17 +26,20 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
 
   // Filter & Sort
   const filtered = entries
-    .filter((e) => (filterDifficulty === 'all' ? true : e.difficulty === filterDifficulty))
+    .filter((e) => {
+      if (filterDifficulty === 'all') return true;
+      return String(e.difficulty || '').toLowerCase() === filterDifficulty.toLowerCase();
+    })
     .sort((a, b) => {
-      if (sortBy === 'mvp') return b.mvpRating - a.mvpRating;
-      if (sortBy === 'streak') return b.winStreak - a.winStreak;
-      return b.fgPercentage - a.fgPercentage;
+      if (sortBy === 'mvp') return Number(b.mvpRating || 0) - Number(a.mvpRating || 0);
+      if (sortBy === 'streak') return Number(b.winStreak || 0) - Number(a.winStreak || 0);
+      return Number(b.fgPercentage || 0) - Number(a.fgPercentage || 0);
     });
 
   const userEntry = entries.find((e) => e.isUser);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-none pointer-events-auto text-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-none pointer-events-auto text-white font-sans">
       <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/50">
@@ -51,7 +54,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
                   Season 1 Live
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">实时同步全球玩家MVP战力值与连胜纪录</p>
+              <p className="text-xs text-slate-400">实时同步玩家MVP战力值与连胜纪录</p>
             </div>
           </div>
 
@@ -65,7 +68,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
 
         {/* User Rank Highlight Bar (if played) */}
         {userEntry && (
-          <div className="px-6 py-2.5 bg-gradient-to-r from-amber-950/40 via-amber-900/20 to-amber-950/40 border-b border-amber-700/50 flex items-center justify-between text-xs">
+          <div className="px-6 py-2.5 bg-gradient-to-r from-amber-950/40 via-amber-900/20 to-amber-950/40 border-b border-amber-700/50 flex flex-wrap items-center justify-between text-xs gap-2">
             <div className="flex items-center gap-2">
               <Award className="w-4 h-4 text-amber-400" />
               <span className="font-bold text-slate-200">我的实时排位:</span>
@@ -74,10 +77,16 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
               </span>
               <span className="text-slate-400">({userEntry.playerName})</span>
             </div>
-            <div className="flex items-center gap-4 text-slate-300">
-              <span>MVP战力: <strong className="text-amber-400">{userEntry.mvpRating}</strong></span>
-              <span>最高连胜: <strong className="text-emerald-400">{userEntry.winStreak}</strong></span>
-              <span>命中率: <strong className="text-cyan-400">{userEntry.fgPercentage}%</strong></span>
+            <div className="flex items-center gap-4 text-slate-300 text-[11px]">
+              <span>
+                MVP战力: <strong className="text-amber-400">{userEntry.mvpRating}</strong>
+              </span>
+              <span>
+                最高连胜: <strong className="text-emerald-400">{userEntry.winStreak}</strong>
+              </span>
+              <span>
+                命中率: <strong className="text-cyan-400">{userEntry.fgPercentage}%</strong>
+              </span>
             </div>
           </div>
         )}
@@ -87,9 +96,9 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
           {/* Difficulty Tabs */}
           <div className="flex items-center gap-1.5">
             <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-slate-400">难度分类:</span>
+            <span className="text-slate-400">段位:</span>
             {[
-              { id: 'all', label: '全部段位' },
+              { id: 'all', label: '全部' },
               { id: 'legend', label: '传奇殿堂' },
               { id: 'allstar', label: '全明星' },
               { id: 'pro', label: '职业组' },
@@ -97,7 +106,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
               <button
                 key={tab.id}
                 onClick={() => setFilterDifficulty(tab.id)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition ${
+                className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition ${
                   filterDifficulty === tab.id
                     ? 'bg-amber-500 text-slate-950 font-black shadow'
                     : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
@@ -113,7 +122,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
             <span className="text-slate-400">排序:</span>
             <button
               onClick={() => setSortBy('mvp')}
-              className={`px-2 py-1 rounded text-xs font-semibold cursor-pointer transition ${
+              className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer transition ${
                 sortBy === 'mvp' ? 'bg-slate-700 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -121,15 +130,15 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
             </button>
             <button
               onClick={() => setSortBy('streak')}
-              className={`px-2 py-1 rounded text-xs font-semibold cursor-pointer transition ${
+              className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer transition ${
                 sortBy === 'streak' ? 'bg-slate-700 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              连胜场次
+              连胜
             </button>
             <button
               onClick={() => setSortBy('fg')}
-              className={`px-2 py-1 rounded text-xs font-semibold cursor-pointer transition ${
+              className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer transition ${
                 sortBy === 'fg' ? 'bg-slate-700 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -143,19 +152,18 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
           <table className="w-full text-left text-xs border-collapse">
             <thead className="sticky top-0 bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 text-[11px] uppercase tracking-wider">
               <tr>
-                <th className="py-2.5 px-4 w-16 text-center">排名</th>
-                <th className="py-2.5 px-4">球手昵称 / 国家地区</th>
-                <th className="py-2.5 px-4 text-center">段位难度</th>
-                <th className="py-2.5 px-4 text-right">投篮命中率</th>
-                <th className="py-2.5 px-4 text-right">三分命中率</th>
-                <th className="py-2.5 px-4 text-right">连胜</th>
-                <th className="py-2.5 px-4 text-right font-bold text-amber-400">MVP战力值</th>
+                <th className="py-3 px-4 w-16 text-center">排名</th>
+                <th className="py-3 px-4">球手昵称 / 国家地区</th>
+                <th className="py-3 px-4 text-center">段位</th>
+                <th className="py-3 px-4 text-right">投篮命中率</th>
+                <th className="py-3 px-4 text-right">三分命中率</th>
+                <th className="py-3 px-4 text-right">连胜</th>
+                <th className="py-3 px-4 text-right font-bold text-amber-400">MVP战力</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {filtered.map((item, index) => {
-                const rankNumber = index + 1;
-                const isTop3 = rankNumber <= 3;
+                const rankNumber = item.rank || index + 1;
                 return (
                   <tr
                     key={item.id}
@@ -183,17 +191,17 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
 
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
-                        <span className="text-base">{item.avatar}</span>
+                        <span className="text-base">{item.avatar || '🏀'}</span>
                         <div>
                           <div className="font-bold text-white flex items-center gap-1.5">
-                            <span>{item.playerName}</span>
+                            <span>{item.playerName || '街球选手'}</span>
                             {item.isUser && (
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">
                                 你
                               </span>
                             )}
                           </div>
-                          <span className="text-[10px] text-slate-400">{item.country}</span>
+                          <span className="text-[10px] text-slate-400">{item.country || '中国'}</span>
                         </div>
                       </div>
                     </td>
@@ -213,18 +221,18 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
                     </td>
 
                     <td className="py-3 px-4 text-right tabular-nums font-semibold text-slate-200">
-                      {item.fgPercentage}%
+                      {item.fgPercentage ?? 0}%
                     </td>
                     <td className="py-3 px-4 text-right tabular-nums text-slate-300">
-                      {item.threePointPercentage}%
+                      {item.threePointPercentage ?? 0}%
                     </td>
 
                     <td className="py-3 px-4 text-right tabular-nums font-bold text-emerald-400">
-                      {item.winStreak} 连胜
+                      {item.winStreak ?? 0} 连胜
                     </td>
 
                     <td className="py-3 px-4 text-right tabular-nums font-black text-amber-400 text-sm">
-                      {item.mvpRating}
+                      {item.mvpRating ?? 0}
                     </td>
                   </tr>
                 );
@@ -235,7 +243,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
 
         {/* Footer */}
         <div className="px-6 py-3 border-t border-slate-800 bg-slate-950/70 flex items-center justify-between text-xs text-slate-400">
-          <span>完成比赛后将自动评估你的比赛MVP战力并计入天梯榜</span>
+          <span>共展示 {filtered.length} 条街球天梯纪录</span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-semibold cursor-pointer transition"
